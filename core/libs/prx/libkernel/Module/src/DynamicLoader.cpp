@@ -61,6 +61,17 @@ void* FindSymbol(Module& module, const char* name) {
     return Symbol(module, (nid + guestSuffix).c_str());
 #endif
 }
+void* DefaultScopeSymbol(const char* name) {
+#ifdef _WIN32
+    if (auto* symbol = GetProcAddress(nullptr, name)) return symbol;
+    const auto nid = Nid::ComputeNid(name, "");
+    return GetProcAddress(nullptr, nid.c_str());
+#else
+    if (auto* symbol = ::dlsym(RTLD_DEFAULT, name)) return symbol;
+    const auto nid = Nid::ComputeNid(name, "");
+    return ::dlsym(RTLD_DEFAULT, nid.c_str());
+#endif
+}
 }
 
 extern "C" {
@@ -113,10 +124,11 @@ void* APS5_VABI dlopen_nid_postfix(const char* path, int flags) {
 void* APS5_VABI dlsym_nid_postfix(void* handle, const char* name) {
     if (!name || !*name) { Error("dlsym: empty symbol name"); return nullptr; }
     try {
+        const bool defaultScope = handle == nullptr || handle == reinterpret_cast<void*>(static_cast<std::intptr_t>(-2));
         std::vector<std::shared_ptr<Module>> search;
         {
             std::lock_guard lock(modulesMutex);
-            if (handle == reinterpret_cast<void*>(static_cast<std::intptr_t>(-2))) {
+            if (defaultScope) {
                 for (const auto& [key, module] : modules) if (module->global) search.push_back(module);
             } else {
                 auto found = modules.find(reinterpret_cast<std::uintptr_t>(handle));
@@ -125,6 +137,9 @@ void* APS5_VABI dlsym_nid_postfix(void* handle, const char* name) {
             }
         }
         for (const auto& module : search) if (auto* result = FindSymbol(*module, name)) return result;
+        if (defaultScope) {
+            if (auto* result = DefaultScopeSymbol(name)) return result;
+        }
         Error("dlsym: symbol not found in supported module scope");
         return nullptr;
     } catch (const std::exception& error) { Error(error.what()); return nullptr; }

@@ -38,11 +38,23 @@ int main(int argc, char** argv) {
     auto add = reinterpret_cast<Add>(dlsym_nid_postfix(module, "GuestModuleAdd"));
     Require(add && add(17, 25) == 42);
     Require(dlsym_nid_postfix(reinterpret_cast<void*>(-2), "GuestModuleAdd") == reinterpret_cast<void*>(add));
+    Require(dlsym_nid_postfix(nullptr, "GuestModuleAdd") == reinterpret_cast<void*>(add));
+    Require(dlsym_nid_postfix(reinterpret_cast<void*>(0x1), "GuestModuleAdd") == nullptr);
+    Require(dlerror_nid_postfix() != nullptr);
+    Require(dlerror_nid_postfix() == nullptr);
 #ifndef _WIN32
     auto mul = reinterpret_cast<Add>(dlsym_nid_postfix(module, "GuestModuleMul"));
     Require(mul && mul(6, 7) == 42);
     auto sub = reinterpret_cast<Add>(dlsym_nid_postfix(module, "GuestModuleSub"));
     Require(sub && sub(50, 8) == 42);
+    using OneArg = int (APS5_VABI *)(int);
+    auto hostPlain = reinterpret_cast<OneArg>(dlsym_nid_postfix(nullptr, "HostDynamicLoaderPlain"));
+    Require(hostPlain && hostPlain(41) == 42);
+    auto hostNid = reinterpret_cast<OneArg>(dlsym_nid_postfix(reinterpret_cast<void*>(-2), "HostDynamicLoaderNidOnly1"));
+    Require(hostNid && hostNid(21) == 42);
+    Require(dlsym_nid_postfix(nullptr, "HostDynamicLoaderMissing") == nullptr);
+    Require(dlerror_nid_postfix() != nullptr);
+    Require(dlerror_nid_postfix() == nullptr);
 #endif
     Require(dlsym_nid_postfix(module, "missing_symbol") == nullptr);
     std::thread other([] { Require(dlerror_nid_postfix() == nullptr); });
